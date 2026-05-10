@@ -8,6 +8,7 @@ intended for local development, on-premise deployments, and SDK testing.
 """
 
 from __future__ import annotations
+from pqcrypto.sign import ml_dsa_44 as mldsa44
 
 import datetime
 import ipaddress
@@ -184,12 +185,7 @@ def validate_cert_chain(cert: Certificate, ca_cert: Certificate) -> bool:
     """
     try:
         ca_public_key = ca_cert.public_key()
-        ca_public_key.verify(
-            cert.signature,
-            cert.tbs_certificate_bytes,
-            rsa.padding.PKCS1v15(),
-            cert.signature_hash_algorithm,
-        )
+        mldsa44.verify(ca_public_key, cert.tbs_certificate_bytes, cert.signature)
         return True
     except Exception as exc:
         logger.debug("Certificate chain validation failed: %s", exc)
