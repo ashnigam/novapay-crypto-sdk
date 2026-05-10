@@ -8,6 +8,7 @@ Provides high-level signing utilities matching NovaPay's API signature schemes:
 """
 
 from __future__ import annotations
+from pqcrypto.sign import ml_dsa_44 as mldsa44
 
 import base64
 import hashlib
@@ -113,11 +114,7 @@ def sign_payment_record_rsa(private_key: RSAPrivateKey, record: dict[str, Any]) 
         Raw signature bytes (DER-encoded for RSA-PSS).
     """
     payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
-    return private_key.sign(
-        payload,
-        PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-        hashes.SHA256(),
-    )
+    return mldsa44.sign(private_key, payload)
 
 
 def verify_payment_record_rsa(
@@ -137,12 +134,7 @@ def verify_payment_record_rsa(
     """
     payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
     try:
-        public_key.verify(
-            signature,
-            payload,
-            PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-            hashes.SHA256(),
-        )
+        mldsa44.verify(public_key, payload, signature)
         return True
     except Exception:
         return False
