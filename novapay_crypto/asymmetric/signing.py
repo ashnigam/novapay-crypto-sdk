@@ -6,9 +6,8 @@ Provides high-level signing utilities matching NovaPay's API signature schemes:
 - Payment record signing (RSA-PSS SHA-256)
 - API request signing (RSA-PKCS1v15 SHA-256 for legacy endpoints)
 """
-
+from pqcrypto.sign import mldsa44
 from __future__ import annotations
-
 import base64
 import hashlib
 import hmac
@@ -16,20 +15,12 @@ import json
 import time
 import uuid
 from typing import Any
-
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
-from cryptography.hazmat.primitives.asymmetric.ec import (
-    ECDSA,
-    SECP256R1,
-    SECP384R1,
-    EllipticCurvePrivateKey,
-    EllipticCurvePublicKey,
-)
+from cryptography.hazmat.primitives.asymmetric.ec import ECDSA, SECP256R1, SECP384R1, EllipticCurvePrivateKey, EllipticCurvePublicKey
 from cryptography.hazmat.primitives.asymmetric.padding import MGF1, PSS
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
-
 
 def sign_webhook_payload(secret: str, payload: bytes) -> str:
     """Compute HMAC-SHA256 signature for a webhook payload.
@@ -51,13 +42,7 @@ def sign_webhook_payload(secret: str, payload: bytes) -> str:
     key = secret.encode() if isinstance(secret, str) else secret
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 
-
-def sign_client_assertion(
-    private_key: EllipticCurvePrivateKey,
-    client_id: str,
-    audience: str,
-    algorithm: str = "ES256",
-) -> str:
+def sign_client_assertion(private_key: EllipticCurvePrivateKey, client_id: str, audience: str, algorithm: str='ES256') -> str:
     """Create a JWT client assertion signed with ECDSA for private_key_jwt auth.
 
     Used during the OAuth 2.0 token endpoint call to authenticate without
@@ -72,32 +57,19 @@ def sign_client_assertion(
     Returns:
         Compact JWT string for use as client_assertion parameter.
     """
-    if algorithm not in ("ES256", "ES384"):
-        raise ValueError(f"Unsupported algorithm: {algorithm}")
-
-    header = {"alg": algorithm, "typ": "JWT"}
+    if algorithm not in ('ES256', 'ES384'):
+        raise ValueError(f'Unsupported algorithm: {algorithm}')
+    header = {'alg': algorithm, 'typ': 'JWT'}
     now = int(time.time())
-    claims = {
-        "iss": client_id,
-        "sub": client_id,
-        "aud": audience,
-        "jti": str(uuid.uuid4()),
-        "iat": now,
-        "exp": now + 300,  # 5-minute assertion lifetime
-    }
+    claims = {'iss': client_id, 'sub': client_id, 'aud': audience, 'jti': str(uuid.uuid4()), 'iat': now, 'exp': now + 300}
 
     def b64(data: dict) -> str:
-        return base64.urlsafe_b64encode(
-            json.dumps(data, separators=(",", ":")).encode()
-        ).rstrip(b"=").decode()
-
-    signing_input = f"{b64(header)}.{b64(claims)}".encode()
-    hash_alg = hashes.SHA256() if algorithm == "ES256" else hashes.SHA384()
+        return base64.urlsafe_b64encode(json.dumps(data, separators=(',', ':')).encode()).rstrip(b'=').decode()
+    signing_input = f'{b64(header)}.{b64(claims)}'.encode()
+    hash_alg = hashes.SHA256() if algorithm == 'ES256' else hashes.SHA384()
     signature = private_key.sign(signing_input, ECDSA(hash_alg))
-
-    sig_b64 = base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
-    return f"{b64(header)}.{b64(claims)}.{sig_b64}"
-
+    sig_b64 = base64.urlsafe_b64encode(signature).rstrip(b'=').decode()
+    return f'{b64(header)}.{b64(claims)}.{sig_b64}'
 
 def sign_payment_record_rsa(private_key: RSAPrivateKey, record: dict[str, Any]) -> bytes:
     """Sign a payment record dict with RSA-PSS-SHA256.
@@ -112,19 +84,10 @@ def sign_payment_record_rsa(private_key: RSAPrivateKey, record: dict[str, Any]) 
     Returns:
         Raw signature bytes (DER-encoded for RSA-PSS).
     """
-    payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
-    return private_key.sign(
-        payload,
-        PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-        hashes.SHA256(),
-    )
+    payload = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
+    return private_key.sign(payload, PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH), hashes.SHA256())
 
-
-def verify_payment_record_rsa(
-    public_key: RSAPublicKey,
-    record: dict[str, Any],
-    signature: bytes,
-) -> bool:
+def verify_payment_record_rsa(public_key: RSAPublicKey, record: dict[str, Any], signature: bytes) -> bool:
     """Verify an RSA-PSS-SHA256 signed payment record.
 
     Args:
@@ -135,18 +98,12 @@ def verify_payment_record_rsa(
     Returns:
         True if signature is valid, False otherwise.
     """
-    payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
+    payload = json.dumps(record, sort_keys=True, separators=(',', ':')).encode()
     try:
-        public_key.verify(
-            signature,
-            payload,
-            PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-            hashes.SHA256(),
-        )
+        mldsa_key.verify(signature, payload, PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH), hashes.SHA256())
         return True
     except Exception:
         return False
-
 
 def sign_api_request_rsa_pkcs1(private_key: RSAPrivateKey, request_body: bytes) -> str:
     """Sign an API request with RSA-PKCS1v15 for legacy NovaPay v1 endpoints.
@@ -165,17 +122,12 @@ def sign_api_request_rsa_pkcs1(private_key: RSAPrivateKey, request_body: bytes) 
     signature = private_key.sign(digest, padding.PKCS1v15(), hashes.SHA256())
     return base64.b64encode(signature).decode()
 
-
-def verify_api_request_signature(
-    public_key: RSAPublicKey,
-    request_body: bytes,
-    signature_b64: str,
-) -> bool:
+def verify_api_request_signature(public_key: RSAPublicKey, request_body: bytes, signature_b64: str) -> bool:
     """Verify RSA-PKCS1v15 API request signature for legacy endpoint security."""
     try:
         sig = base64.b64decode(signature_b64)
         digest = hashlib.sha256(request_body).digest()
-        public_key.verify(sig, digest, padding.PKCS1v15(), hashes.SHA256())
+        mldsa_key.verify(sig, digest, padding.PKCS1v15(), hashes.SHA256())
         return True
     except Exception:
         return False
