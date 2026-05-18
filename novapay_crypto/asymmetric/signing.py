@@ -8,6 +8,7 @@ Provides high-level signing utilities matching NovaPay's API signature schemes:
 """
 
 from __future__ import annotations
+from pqcrypto.sign import ml_dsa_44 as mldsa44
 
 import base64
 import hashlib
@@ -18,16 +19,9 @@ import uuid
 from typing import Any
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.ec import (
-    ECDSA,
-    SECP256R1,
-    SECP384R1,
-    EllipticCurvePrivateKey,
-    EllipticCurvePublicKey,
-)
-from cryptography.hazmat.primitives.asymmetric.padding import MGF1, PSS
+    EllipticCurvePrivateKey)
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 
 
@@ -93,7 +87,7 @@ def sign_client_assertion(
 
     signing_input = f"{b64(header)}.{b64(claims)}".encode()
     hash_alg = hashes.SHA256() if algorithm == "ES256" else hashes.SHA384()
-    signature = private_key.sign(signing_input, ECDSA(hash_alg))
+    signature = mldsa44.sign(private_key, signing_input)
 
     sig_b64 = base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
     return f"{b64(header)}.{b64(claims)}.{sig_b64}"
@@ -113,11 +107,7 @@ def sign_payment_record_rsa(private_key: RSAPrivateKey, record: dict[str, Any]) 
         Raw signature bytes (DER-encoded for RSA-PSS).
     """
     payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
-    return private_key.sign(
-        payload,
-        PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-        hashes.SHA256(),
-    )
+    return mldsa44.sign(private_key, payload)
 
 
 def verify_payment_record_rsa(
@@ -137,12 +127,7 @@ def verify_payment_record_rsa(
     """
     payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
     try:
-        public_key.verify(
-            signature,
-            payload,
-            PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-            hashes.SHA256(),
-        )
+        mldsa44.verify(public_key, payload, signature)
         return True
     except Exception:
         return False
@@ -162,7 +147,7 @@ def sign_api_request_rsa_pkcs1(private_key: RSAPrivateKey, request_body: bytes) 
         Base64-encoded signature for the X-NovaPay-Signature header.
     """
     digest = hashlib.sha256(request_body).digest()
-    signature = private_key.sign(digest, padding.PKCS1v15(), hashes.SHA256())
+    signature = mldsa44.sign(private_key, digest)
     return base64.b64encode(signature).decode()
 
 
@@ -175,7 +160,7 @@ def verify_api_request_signature(
     try:
         sig = base64.b64decode(signature_b64)
         digest = hashlib.sha256(request_body).digest()
-        public_key.verify(sig, digest, padding.PKCS1v15(), hashes.SHA256())
+        mldsa44.verify(public_key, digest, sig)
         return True
     except Exception:
         return False
