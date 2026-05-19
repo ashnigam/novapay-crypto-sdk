@@ -10,6 +10,7 @@ or an OS keychain. Never persist plaintext private keys to disk in production.
 """
 
 from __future__ import annotations
+from pqcrypto.sign import ml_dsa_44 as mldsa44
 
 import base64
 import json
@@ -19,20 +20,10 @@ from typing import Tuple
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import dh, ec, rsa
 from cryptography.hazmat.primitives.asymmetric.ec import (
-    ECDH,
-    SECP256R1,
-    SECP384R1,
-    SECP521R1,
-    EllipticCurvePrivateKey,
-    EllipticCurvePublicKey,
-)
+    ECDH, SECP256R1, SECP384R1, SECP521R1, EllipticCurvePrivateKey, EllipticCurvePublicKey)
 from cryptography.hazmat.primitives.asymmetric.rsa import (
-    RSAPrivateKey,
-    RSAPublicKey,
-    generate_private_key,
-)
+    RSAPrivateKey, RSAPublicKey, generate_private_key)
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 
@@ -78,7 +69,7 @@ def generate_ec_keypair(curve=None) -> Tuple[EllipticCurvePrivateKey, EllipticCu
     """
     if curve is None:
         curve = EC_DEFAULT_CURVE
-    private_key = ec.generate_private_key(curve, default_backend())
+    _public_key, private_key = mldsa44.keypair()
     return private_key, private_key.public_key()
 
 
@@ -107,11 +98,7 @@ def export_private_key_pem(private_key: RSAPrivateKey | EllipticCurvePrivateKey,
         if password
         else serialization.NoEncryption()
     )
-    return private_key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        encryption,
-    )
+    return private_key
 
 
 def export_public_key_pem(public_key: RSAPublicKey | EllipticCurvePublicKey) -> bytes:
@@ -180,6 +167,7 @@ def ecdh_shared_secret(
     Returns:
         32-byte derived key suitable for AES-256-GCM.
     """
+    # PQC_MIGRATION_REQUIRED: ML-KEM/ML-KEM .exchange() cannot auto-migrate to ML-KEM. ML-KEM is encaps/decaps — sender: mlkem768.encaps(pk) -> (ct, ss); receiver: mlkem768.decaps(sk, ct) -> ss. Split protocol manually. See: https://qryptive.ai/docs/kem-migration
     shared_key = private_key.exchange(ECDH(), peer_public_key)
     return HKDF(
         algorithm=hashes.SHA256(),
