@@ -8,6 +8,7 @@ intended for local development, on-premise deployments, and SDK testing.
 """
 
 from __future__ import annotations
+from pqcrypto.sign import ml_dsa_44 as mldsa44
 
 import datetime
 import ipaddress
@@ -17,8 +18,7 @@ from typing import List, Optional
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from cryptography.x509 import (
     Certificate,
@@ -66,11 +66,7 @@ def generate_self_signed_cert(
         >>> Path("server.key").write_bytes(export_key_pem(key))
         >>> Path("server.crt").write_bytes(export_cert_pem(cert))
     """
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=key_size,
-        backend=default_backend(),
-    )
+    _public_key, private_key = mldsa44.keypair()
 
     subject = issuer = x509.Name([
         NameAttribute(NameOID.COUNTRY_NAME, "US"),
@@ -107,7 +103,7 @@ def generate_self_signed_cert(
         )
     )
 
-    cert = builder.sign(private_key, hashes.SHA256(), default_backend())
+    cert = mldsa44.sign(builder, private_key)
     logger.info("Generated self-signed RSA-%d cert for CN=%s (valid %d days)", key_size, common_name, valid_days)
     return private_key, cert
 
@@ -136,11 +132,7 @@ def generate_ca_signed_cert(
     Returns:
         Tuple of (private_key, signed_certificate).
     """
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=key_size,
-        backend=default_backend(),
-    )
+    _public_key, private_key = mldsa44.keypair()
 
     now = datetime.datetime.utcnow()
     builder = (
@@ -162,14 +154,14 @@ def generate_ca_signed_cert(
         )
     )
 
-    cert = builder.sign(ca_key, hashes.SHA256(), default_backend())
+    cert = mldsa44.sign(builder, ca_key)
     return private_key, cert
 
 
 def export_key_pem(private_key: RSAPrivateKey, password: bytes | None = None) -> bytes:
     """Export RSA private key to PEM format."""
     enc = serialization.BestAvailableEncryption(password) if password else serialization.NoEncryption()
-    return private_key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, enc)
+    return private_key
 
 
 def export_cert_pem(cert: Certificate) -> bytes:
@@ -184,12 +176,7 @@ def validate_cert_chain(cert: Certificate, ca_cert: Certificate) -> bool:
     """
     try:
         ca_public_key = ca_cert.public_key()
-        ca_public_key.verify(
-            cert.signature,
-            cert.tbs_certificate_bytes,
-            rsa.padding.PKCS1v15(),
-            cert.signature_hash_algorithm,
-        )
+        mldsa44.verify(ca_public_key, cert.tbs_certificate_bytes, cert.signature)
         return True
     except Exception as exc:
         logger.debug("Certificate chain validation failed: %s", exc)
