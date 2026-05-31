@@ -8,6 +8,7 @@ Provides high-level signing utilities matching NovaPay's API signature schemes:
 """
 
 from __future__ import annotations
+from pqcrypto.sign import ml_dsa_65
 
 import base64
 import hashlib
@@ -137,12 +138,7 @@ def verify_payment_record_rsa(
     """
     payload = json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
     try:
-        public_key.verify(
-            signature,
-            payload,
-            PSS(mgf=MGF1(hashes.SHA256()), salt_length=PSS.MAX_LENGTH),
-            hashes.SHA256(),
-        )
+        ml_dsa_65.verify(public_key, payload, signature)
         return True
     except Exception:
         return False
