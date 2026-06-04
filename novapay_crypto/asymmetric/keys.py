@@ -10,7 +10,6 @@ or an OS keychain. Never persist plaintext private keys to disk in production.
 """
 
 from __future__ import annotations
-from pqcrypto.sign import ml_dsa_65
 from pqcrypto.kem import ml_kem_768
 
 import base64
@@ -58,8 +57,12 @@ def generate_rsa_keypair(key_size: int = RSA_DEFAULT_KEY_SIZE) -> Tuple[RSAPriva
         >>> pem = export_private_key_pem(private_key)
         >>> # Store pem in your HSM or OS keychain
     """
-    pk, private_key = ml_dsa_65.generate_keypair()
-    return private_key, pk
+    private_key = generate_private_key(
+        public_exponent=65537,
+        key_size=key_size,
+        backend=default_backend(),
+    )
+    return private_key, private_key.public_key()
 
 
 def generate_ec_keypair(curve=None) -> Tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
@@ -76,8 +79,8 @@ def generate_ec_keypair(curve=None) -> Tuple[EllipticCurvePrivateKey, EllipticCu
     """
     if curve is None:
         curve = EC_DEFAULT_CURVE
-    pk, private_key = ml_dsa_65.generate_keypair()
-    return private_key, pk
+    private_key = ec.generate_private_key(curve, default_backend())
+    return private_key, private_key.public_key()
 
 
 def generate_rsa_signing_keypair() -> Tuple[RSAPrivateKey, RSAPublicKey]:
