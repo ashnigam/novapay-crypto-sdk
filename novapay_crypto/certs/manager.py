@@ -67,7 +67,11 @@ def generate_self_signed_cert(
         >>> Path("server.key").write_bytes(export_key_pem(key))
         >>> Path("server.crt").write_bytes(export_cert_pem(cert))
     """
-    pk, private_key = ml_dsa_65.generate_keypair()
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=key_size,
+        backend=default_backend(),
+    )
 
     subject = issuer = x509.Name([
         NameAttribute(NameOID.COUNTRY_NAME, "US"),
@@ -83,7 +87,7 @@ def generate_self_signed_cert(
         CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer)
-        .public_key(pk)
+        .public_key(private_key.public_key())
         .serial_number(random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + datetime.timedelta(days=valid_days))
@@ -104,7 +108,7 @@ def generate_self_signed_cert(
         )
     )
 
-    cert = ml_dsa_65.sign(private_key, builder.tbs_certificate_bytes)
+    cert = builder.sign(private_key, hashes.SHA256(), default_backend())
     logger.info("Generated self-signed RSA-%d cert for CN=%s (valid %d days)", key_size, common_name, valid_days)
     return private_key, cert
 
@@ -133,7 +137,11 @@ def generate_ca_signed_cert(
     Returns:
         Tuple of (private_key, signed_certificate).
     """
-    pk, private_key = ml_dsa_65.generate_keypair()
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=key_size,
+        backend=default_backend(),
+    )
 
     now = datetime.datetime.utcnow()
     builder = (
@@ -143,7 +151,7 @@ def generate_ca_signed_cert(
             NameAttribute(NameOID.COMMON_NAME, common_name),
         ]))
         .issuer_name(ca_cert.subject)
-        .public_key(pk)
+        .public_key(private_key.public_key())
         .serial_number(random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + datetime.timedelta(days=valid_days))
@@ -155,7 +163,7 @@ def generate_ca_signed_cert(
         )
     )
 
-    cert = ml_dsa_65.sign(private_key, builder.tbs_certificate_bytes)
+    cert = builder.sign(ca_key, hashes.SHA256(), default_backend())
     return private_key, cert
 
 
@@ -177,7 +185,7 @@ def validate_cert_chain(cert: Certificate, ca_cert: Certificate) -> bool:
     """
     try:
         ca_public_key = ca_cert.public_key()
-        ml_dsa_65.verify(ca_public_key, cert.tbs_certificate_bytes, cert.signature)
+        ml_dsa_65.verify(ca_public_key, cert.signature, cert.tbs_certificate_bytes)
         return True
     except Exception as exc:
         logger.debug("Certificate chain validation failed: %s", exc)
