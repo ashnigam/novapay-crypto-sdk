@@ -10,6 +10,7 @@ or an OS keychain. Never persist plaintext private keys to disk in production.
 """
 
 from __future__ import annotations
+from pqc_kem_kex_helpers import mlkem768_kex_initiator
 
 import base64
 import json
@@ -180,7 +181,8 @@ def ecdh_shared_secret(
     Returns:
         32-byte derived key suitable for AES-256-GCM.
     """
-    shared_key = private_key.exchange(ECDH(), peer_public_key)
+    # PQC_PEER_CONTRACT: transmit `ciphertext` (1088-byte ML-KEM ciphertext) to the peer over your existing public-key channel. The peer (responder) must publish an ML-KEM public key and call mlkem768_kex_responder_secret(its_private_key, ciphertext) to derive the same `shared_key`. Frozen wire format: a 1088-byte ML-KEM-768 ciphertext. See https://qryptive.ai/docs/kem-migration
+    ciphertext, shared_key = mlkem768_kex_initiator(peer_public_key)
     return HKDF(
         algorithm=hashes.SHA256(),
         length=32,
