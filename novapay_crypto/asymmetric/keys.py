@@ -10,7 +10,7 @@ or an OS keychain. Never persist plaintext private keys to disk in production.
 """
 
 from __future__ import annotations
-from crypto_provider import provider
+from .crypto_provider import provider
 
 import base64
 import json

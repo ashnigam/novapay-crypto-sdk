@@ -11,7 +11,7 @@ function in the 0.x surface with no deprecation period.
 """
 import importlib
 
-import crypto_policy
+from . import crypto_policy
 
 # policy name -> pqcrypto module path. Add a future algorithm with ONE row.
 _SIGNERS = {
